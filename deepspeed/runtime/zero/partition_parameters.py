@@ -30,7 +30,7 @@ partitioned_param_data_shape = [1]
 
 def print_rank_0(message, debug=False, force=False):
     rank = torch.distributed.get_rank()
-    if rank == 0 and (debug or force):
+    if rank == 0:
         print(message)
     # other variations
     # - print for all ranks w/o interleaving
@@ -706,21 +706,21 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
     def _partition(self, param_list, force=False, has_been_updated=False):
         for param in param_list:
-            #print_rank_0(f"Before Partitioning Param {param.ds_id}")
-            # self._param_status(param)
+            print_rank_0(f"Before Partitioning Param {param.ds_id}")
+            self._param_status(param)
             self._partition_param(param, has_been_updated=has_been_updated)
             param.ds_status = ZeroParamStatus.NOT_AVAILABLE
             # if param.ds_tensor is not None:
             #    assert id(param.data) == id(param.ds_tensor.data), \
             #    "After the parameters are initially partitioned, make sure we are not recreating the partition."
-            #print_rank_0(f"After Partitioning Param {param.ds_id}")
-            # self._param_status(param)
+            print_rank_0(f"After Partitioning Param {param.ds_id}")
+            self._param_status(param)
 
     def _partition_param(self, param, buffer=None, has_been_updated=False):
         assert param.ds_status is not ZeroParamStatus.INFLIGHT, f" {param} Cannot partition a param in flight"
 
         global reuse_buffers
-        #print_rank_0(f"Param id {param.ds_id} status is {param.ds_status}")
+        print_rank_0(f"Param id {param.ds_id} status is {param.ds_status}")
         if param.ds_status is ZeroParamStatus.AVAILABLE:
             print_rank_0(
                 f"Partitioning param id {param.ds_id} reuse buffers {reuse_buffers}",
@@ -817,7 +817,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                                    start,
                                                    elements_to_copy))
 
-            #print(f"Remote device {self.remote_device}")
+            print(f"Remote device {self.remote_device}")
 
             #param.ds_tensor = partitioned_tensor
 
@@ -1064,7 +1064,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             partition_size = param.ds_tensor.ds_numel
             start = self.rank * partition_size
             end = start + partition_size
-            #print_rank_0("REduce scatter was executed for praam {param.ds_id}")
+            print_rank_0("REduce scatter was executed for praam {param.ds_id}")
             if start < param.ds_numel and end > param.ds_numel:
                 elements = param.ds_numel - start
                 param.grad.view(-1).narrow(0,
@@ -1087,7 +1087,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             start = i * partition_size
             end = start + partition_size
 
-            #print("before reduce scatter gradients")
+            print("before reduce scatter gradients")
             if start < param.ds_numel and end <= param.ds_numel:
                 input = param.grad.view(-1).narrow(0, start, partition_size)
             else:
@@ -1103,7 +1103,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                      param.grad.view(-1).narrow(0,
                                                                 start,
                                                                 elements))
-            #print("after reduce scatter gradients")
+            print("after reduce scatter gradients")
             input_list.append(input)
 
         rank = torch.distributed.get_rank(group=self.ds_process_group)
@@ -1148,7 +1148,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
 
         dest_tensor_full_buffer = partition_buffer.view(-1).narrow(0, 0, partition_size)
 
-        #print("before partition gradients")
+        print("before partition gradients")
         if start < param.ds_numel:
             elements = min(param.ds_numel - start, partition_size)
 
@@ -1184,7 +1184,7 @@ class Init(InsertPostInitMethodToModuleSubClasses):
             #                                             start,
             #                                             elements))
 
-        #print("after partition gradients")
+        print("after partition gradients")
         param.grad.data = dest_tensor_full_buffer.data
         see_memory_usage("After partitioning gradients", force=False)
 

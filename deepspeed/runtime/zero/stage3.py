@@ -37,7 +37,7 @@ from deepspeed.utils.debug import debug_module2name_id, debug_param2name_id, deb
 
 def print_rank_0(message, debug=False, force=False):
     rank = torch.distributed.get_rank()
-    if rank == 0 and (debug or force):
+    if rank == 0:
         print(message)
     # other variations
     # - print for all ranks w/o interleaving
@@ -232,7 +232,7 @@ class PrefetchCoordinator(object):
                         param.ds_id not in [p.ds_id for p in params_to_prefetch]):
                     params_to_prefetch.append(param)
                     total_numel_to_prefetch += param.ds_numel
-                    #print_rank_0(f"Total numel to prefetch: {total_numel_to_prefetch}. Param: {param.ds_shape} and numel {param.ds_numel}, numel limit {numel}")
+                    print_rank_0(f"Total numel to prefetch: {total_numel_to_prefetch}. Param: {param.ds_shape} and numel {param.ds_numel}, numel limit {numel}")
                     if total_numel_to_prefetch >= numel:  # and total_numel_to_prefetch > (numel_in_sub_module // 2):
                         return params_to_prefetch
 
@@ -452,10 +452,10 @@ class PartitionedParameterCoordinator(object):
 
         for _, param in sub_module.named_parameters(recurse=False):
             param.ds_status = ZeroParamStatus.AVAILABLE
-            print_rank_0(
-                f"Param {debug_param2name_id_shape_device(param)} norm={param.norm()}",
-                force=False)
-        #print_rank_0(f"After fetching (id, shape, device): {[(param.ds_id, param.shape, param.device) for param in sub_module.named_parameters(recurse=False)]}")
+            # print_rank_0(
+            #     f"Param {debug_param2name_id_shape_device(param)} norm={param.norm()}",
+            #     force=False)
+        print_rank_0(f"After fetching (id, shape, device): {[(param.ds_id, param.shape, param.device) for _, param in sub_module.named_parameters(recurse=False)]}")
 
     def release_sub_module(self, sub_module):
         self.hierarchy -= 1
@@ -516,7 +516,7 @@ class PartitionedParameterCoordinator(object):
             return False
         reuse_distance_in_numel = self.prefetch_coordinator.get_reuse_distance_in_numel(
             sub_module)
-        #print_rank_0(f"Reuse distance and numel for sub_module id {sub_module.id} is {reuse_distance_in_numel}")
+        print_rank_0(f"Reuse distance and numel for sub_module id {sub_module.id} is {reuse_distance_in_numel}")
         return reuse_distance_in_numel < self.max_reuse_distance_in_numel
 
     def _all_gather(self, partitioned_params, async_op=False):
@@ -551,13 +551,13 @@ class PreBackwardFunction(torch.autograd.Function):
         if not hasattr(module, "applied_pre_backward_ref_cnt"):
             module.applied_pre_backward_ref_cnt = 0
         module.applied_pre_backward_ref_cnt += 1
-        #print(f"After Forward: {ctx.module.__class__.__name__}")
+        print(f"After Forward: {ctx.module.__class__.__name__}")
         outputs = outputs.detach()
         return outputs
 
     @staticmethod
     def backward(ctx, *args):
-        #print(f"Before Backward: {ctx.module.__class__.__name__}")
+        print(f"Before Backward: {ctx.module.__class__.__name__}")
         ctx.pre_backward_function(ctx.module)
         return (None, None) + args
 
@@ -573,8 +573,8 @@ class PostBackwardFunction(torch.autograd.Function):
             #    ctx.view=True
             #    print(f"Warning view tensor for input to module : {module.__class__.__name__}. Backward hooks may not trigger properly")
             #assert len(module.parameters(recurse=False)), "The input tensor to the module is a view, and autograd Function or register_hook is not triggered with view tensors."
-            #if module.ds_grads_remaining == 0:
-            #    print(f"Before Forward: {ctx.module.__class__.__name__}")
+            if module.ds_grads_remaining == 0:
+                print(f"Before Forward: {ctx.module.__class__.__name__}")
             module.ds_grads_remaining += 1
             ctx.pre_backward_function = pre_backward_function
         output = output.detach()
@@ -585,7 +585,7 @@ class PostBackwardFunction(torch.autograd.Function):
         ctx.module.ds_grads_remaining = ctx.module.ds_grads_remaining - 1
         if ctx.module.ds_grads_remaining == 0:
             ctx.pre_backward_function(ctx.module)
-            #print(f"After Backward: {ctx.module.__class__.__name__}")
+            print(f"After Backward: {ctx.module.__class__.__name__}")
         return (None, None) + args
 
 
@@ -978,9 +978,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 self.fp16_partitioned_groups.append(
                     [param.ds_tensor for param in self.fp16_groups[i]])
 
-                print_rank_0(
-                    f"fp16 group {i} partitioned_param norms : {[param.ds_tensor.norm().item() for param in self.fp16_groups[i]]}"
-                )
+                # print_rank_0(
+                #     f"fp16 group {i} partitioned_param norms : {[param.ds_tensor.norm().item() for param in self.fp16_groups[i]]}"
+                # )
 
                 # Record padding required to align group to world size (only applies to last rank)
                 if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
@@ -1139,9 +1139,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     ]
                     max_partition_numel = total_elements
 
-                print_rank_0(
-                    f"fp16 group {i} partitioned_param norms : {[param.ds_tensor.norm().item() for param in self.fp16_groups[i]]}"
-                )
+                # print_rank_0(
+                #     f"fp16 group {i} partitioned_param norms : {[param.ds_tensor.norm().item() for param in self.fp16_groups[i]]}"
+                # )
 
                 # Record padding required to align group to world size (only applies to last rank)
                 if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
@@ -1442,7 +1442,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         my_count = count[0]
         module.id = my_count
 
-        #print(f"{module.__class__} : {module.id}")
+        print(f"{module.__class__} : {module.id}")
 
         for child in module.children():
             count[0] = count[0] + 1
@@ -1460,14 +1460,14 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 if torch.is_tensor(output):
                     output = [output]
                 else:
-                    #print(f'got UNKNOWN type {type(output)}')
+                    print(f'got UNKNOWN type {type(output)}')
                     outputs = []
                     output = output if isinstance(output, dict) else vars(output)
                     for name, val in output.items():
                         if not name.startswith('__') and torch.is_tensor(val):
                             outputs.append(val)
                     output = outputs
-                    #print(f'convert output to {output}')
+                    print(f'convert output to {output}')
 
             for item in filter(lambda item: is_zero_param(item), output):
                 if not any(id(item) in m._external_params for m in FWD_MODULE_STACK):
@@ -1495,11 +1495,11 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                 # some models (e.g. Albert) may run multiple forwards on the same layer in a loop
                 # before doing backwards, so each backward will need a pre-fetch - using reference
                 # counting to support this scenario
-                #print(f"COUNTER before: {sub_module.applied_pre_backward_ref_cnt}")
+                print(f"COUNTER before: {sub_module.applied_pre_backward_ref_cnt}")
                 if sub_module.applied_pre_backward_ref_cnt > 0:
                     self.pre_sub_module_backward_function(sub_module)
                     sub_module.applied_pre_backward_ref_cnt -= 1
-                #print(f"COUNTER after: {sub_module.applied_pre_backward_ref_cnt}")
+                print(f"COUNTER after: {sub_module.applied_pre_backward_ref_cnt}")
 
             return _apply_to_tensors_only(module,
                                           PreBackwardFunction,
@@ -1511,12 +1511,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         def _alternate_post_backward_module_hook(module, inputs):
             module.ds_grads_remaining = 0
 
-            #print(f"Before Forward {module.__class__.__name__}")
+            print(f"Before Forward {module.__class__.__name__}")
 
             def _run_after_backward_hook(*unused):
                 module.ds_grads_remaining = module.ds_grads_remaining - 1
                 if module.ds_grads_remaining == 0:
-                    #print(f"After backward {module.__class__.__name__}")
+                    print(f"After backward {module.__class__.__name__}")
                     self.post_sub_module_backward_function(module)
 
             def _run_before_forward_function(input):
@@ -1879,12 +1879,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         for i, param_group in enumerate(self.fp16_groups):
             for param in param_group:
                 if param.requires_grad:
-                    #print_rank_0(f" Before all gather {param.device}, {param.shape}")
+                    print_rank_0(f"Before all gather {param.device}, {param.shape}")
 
                     # The hook must be created in un-partitioned parameter
                     param.all_gather()
 
-                    #print(f"After all gather {param.device}, {param.shape}")
+                    print(f"After all gather {param.device}, {param.shape}")
                     def wrapper(param, i):
                         param_tmp = param.expand_as(param)
                         grad_acc = param_tmp.grad_fn.next_functions[0][0]
@@ -1915,7 +1915,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
 
     ###############Idependent Partition Gradient ########################
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
-        #print_rank_0(f"Inside reduce ipg buckets. {debug_param2name_id_shape(param)}, ipg elements {self.elements_in_ipg_bucket}, reduce bucket size {self.reduce_bucket_size}", force=True)
+        print_rank_0(f"Inside reduce ipg buckets. {debug_param2name_id_shape(param)}, ipg elements {self.elements_in_ipg_bucket}, reduce bucket size {self.reduce_bucket_size}", force=True)
 
         # Because the ipg bucket is initialized with a random place holder tensor, we must
         # explicitly check that the bucket has any real data in it (self.elements_in_ipg_bucket >
@@ -1945,12 +1945,12 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
             self.extra_large_param_to_reduce = param
 
         elif self.contiguous_gradients:
-            #print_rank_0("before new grad tensor move")
+            print_rank_0("before new grad tensor move")
             new_grad_tensor = self.ipg_buffer[self.ipg_index].narrow(
                 0,
                 self.elements_in_ipg_bucket,
                 param.ds_numel)
-            #print_rank_0("after new grad tensor move")
+            print_rank_0("after new grad tensor move")
             new_grad_tensor.copy_(param.grad.view(-1))
             param.grad.data = new_grad_tensor.data.view_as(param.grad)
 
@@ -2015,7 +2015,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     int(current_offset),
                     int(num_elements)
                 ]
-                #print(f"param id {param_id} i:{i}, ds_tensor {num_elements} numel {param.numel()}")
+                print(f"param id {param_id} i:{i}, ds_tensor {num_elements} numel {param.numel()}")
                 current_offset += num_elements
 
     def async_accumulate_grad_in_cpu_via_gpu(self, param, acc_grad_cpu_partition):
@@ -2062,7 +2062,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         with torch.cuda.stream(self.copy_grad_stream):
             param_id = self.get_param_id(param)
             src_tensor = param.grad.view(-1).float()
-            #print(f"src_tensor {src_tensor.size()} and fp32 grad {fp32_grad_tensor.size()}")
+            print(f"src_tensor {src_tensor.size()} and fp32 grad {fp32_grad_tensor.size()}")
             fp32_grad_tensor.copy_(src_tensor, non_blocking=True)
             param.grad = None
 
@@ -2104,7 +2104,8 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         else:
             allocate_grads_in_partition = self.grads_in_partition is None
 
-        if allocate_grads_in_partition:
+        if True:
+        # if allocate_grads_in_partition:
             self.grads_in_partition = []
 
             for i, group in enumerate(self.fp16_groups):
@@ -2233,7 +2234,7 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         #####################################################################
 
     def reduce_ready_partitions_and_remove_grads(self, param, i):
-        #print_rank_0(f"Backward {debug_param2name_id_shape(param)}", force=True)
+        print_rank_0(f"Backward {debug_param2name_id_shape(param)}", force=True)
         self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
 
     def zero_reduced_gradients(self, partition_id, i):
@@ -2790,10 +2791,10 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
         self._pre_step()
 
         #checks for overflow, adjust the loss scale accordingly
-        if self._overflow_check_and_loss_scale_update():
-            if self.swap_optimizer:
-                self.optimizer_swapper.log_timers()
-            return
+        # if self._overflow_check_and_loss_scale_update():
+        #     if self.swap_optimizer:
+        #         self.optimizer_swapper.log_timers()
+        #     return
 
         norm_groups = self._get_norm_groups()
         self._global_grad_norm = get_global_norm(norm_list=norm_groups)
