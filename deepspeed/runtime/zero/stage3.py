@@ -268,10 +268,10 @@ class PartitionedParameterCoordinator:
         if not self.trace_complete:
             # make sure that recorded parameter and submodule orders are
             # identical across ranks
-            assert_ints_same_as_other_ranks([m.id for m in self.__submodule_order])
-            assert_ints_same_as_other_ranks([p.param.ds_id for p in self.__param_order])
-            assert_ints_same_as_other_ranks(
-                [p.step_id_last_used_at for p in self.__param_order])
+            # assert_ints_same_as_other_ranks([m.id for m in self.__submodule_order])
+            # assert_ints_same_as_other_ranks([p.param.ds_id for p in self.__param_order])
+            # assert_ints_same_as_other_ranks(
+            #     [p.step_id_last_used_at for p in self.__param_order])
 
             self.__submodule_order = tuple(self.__submodule_order)  # freeze
             self.__param_order = tuple(self.__param_order)  # freeze
@@ -1971,6 +1971,12 @@ class DeepSpeedZeroOptimizer_Stage3(object):
     def __partition_grads(self,
                           params_to_release: List[Parameter],
                           grad_partitions: List[Tensor]) -> None:
+        self.__param_id_to_grad_partition.clear()
+        all_params = list(itertools.chain.from_iterable(self.fp16_groups))
+        for i, param in enumerate(all_params):
+            self.__param_id_to_grad_partition[
+                param.ds_id] = grad_partitions[i]
+
         for param, grad_partition in zip(params_to_release, grad_partitions):
             if param.ds_tensor.ds_numel * dist.get_rank(
                     self.dp_process_group) > param.ds_numel:
@@ -1978,10 +1984,7 @@ class DeepSpeedZeroOptimizer_Stage3(object):
                 continue
 
             # move or accumulate gradient partition to target buffer
-            grad_buffer = self.__param_id_to_grad_partition[param.ds_id].narrow(
-                0,
-                0,
-                grad_partition.numel())
+            grad_buffer = self.__param_id_to_grad_partition[param.ds_id]
             if self.micro_step_id == 0:  # don't accumulate
                 grad_buffer.copy_(grad_partition, non_blocking=True)
                 # ensure grad buffer is a CUDA buffer to speed up the next few
@@ -2644,21 +2647,21 @@ class DeepSpeedZeroOptimizer_Stage3(object):
         self._post_step(timer_names)
 
         # warn user about caching allocator flushes
-        alloc_retries = torch.cuda.memory_stats()["num_alloc_retries"] if hasattr(
-            torch.cuda,
-            "memory_stats") else 0
-        if alloc_retries > self.__n_caching_allocator_flushes:
-            if dist.get_rank() == 0:
-                logger.warning(
-                    "%d pytorch allocator cache flushes since last step. this happens "
-                    "when there is high memory pressure and is detrimental to "
-                    "performance. if this is happening frequently consider adjusting "
-                    "settings to reduce memory consumption. If you are unable to "
-                    "make the cache flushes go away consider adding "
-                    "torch.cuda.empty_cache() calls in your training loop to ensure "
-                    "that all ranks flush their caches at the same time",
-                    alloc_retries - self.__n_caching_allocator_flushes)
-            self.__n_caching_allocator_flushes = alloc_retries
+        # alloc_retries = torch.cuda.memory_stats()["num_alloc_retries"] if hasattr(
+        #     torch.cuda,
+        #     "memory_stats") else 0
+        # if alloc_retries > self.__n_caching_allocator_flushes:
+        #     if dist.get_rank() == 0:
+        #         logger.warning(
+        #             "%d pytorch allocator cache flushes since last step. this happens "
+        #             "when there is high memory pressure and is detrimental to "
+        #             "performance. if this is happening frequently consider adjusting "
+        #             "settings to reduce memory consumption. If you are unable to "
+        #             "make the cache flushes go away consider adding "
+        #             "torch.cuda.empty_cache() calls in your training loop to ensure "
+        #             "that all ranks flush their caches at the same time",
+        #             alloc_retries - self.__n_caching_allocator_flushes)
+        #     self.__n_caching_allocator_flushes = alloc_retries
 
     def dump_pre_step_gradients(self, debug_fp32_grads):
         # Dump gradient norms for debugging

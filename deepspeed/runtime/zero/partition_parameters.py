@@ -874,11 +874,12 @@ class Init(InsertPostInitMethodToModuleSubClasses):
                                            partition_sz * i,
                                            partition_sz))
 
-                instrument_w_nvtx(torch.cat)(
-                    [p.ds_tensor.to(torch.cuda.current_device()) for p in params],
-                    out=partitions[self.rank])
+                # instrument_w_nvtx(torch.cat)(
+                #     [p.ds_tensor.to(torch.cuda.current_device()) for p in params],
+                #     out=partitions[self.rank])
+                inp = torch.cat([p.ds_tensor.to(torch.cuda.current_device()) for p in params])
 
-                handle = torch_allgather_fn(partitions[self.rank],
+                handle = torch_allgather_fn(inp,
                                             flat_tensor,
                                             self.ds_process_group)
 
