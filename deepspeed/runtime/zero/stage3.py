@@ -452,9 +452,9 @@ class PartitionedParameterCoordinator(object):
 
         for _, param in sub_module.named_parameters(recurse=False):
             param.ds_status = ZeroParamStatus.AVAILABLE
-            print_rank_0(
-                f"Param {debug_param2name_id_shape_device(param)} norm={param.norm()}",
-                force=False)
+            # print_rank_0(
+            #     f"Param {debug_param2name_id_shape_device(param)} norm={param.norm()}",
+            #     force=False)
         #print_rank_0(f"After fetching (id, shape, device): {[(param.ds_id, param.shape, param.device) for param in sub_module.named_parameters(recurse=False)]}")
 
     def release_sub_module(self, sub_module):
@@ -1130,9 +1130,9 @@ class FP16_DeepSpeedZeroOptimizer_Stage3(object):
                     ]
                     max_partition_numel = total_elements
 
-                print_rank_0(
-                    f"fp16 group {i} partitioned_param norms : {[param.ds_tensor.norm().item() for param in self.fp16_groups[i]]}"
-                )
+                # print_rank_0(
+                #     f"fp16 group {i} partitioned_param norms : {[param.ds_tensor.norm().item() for param in self.fp16_groups[i]]}"
+                # )
 
                 # Record padding required to align group to world size (only applies to last rank)
                 if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
