@@ -189,10 +189,10 @@ class PartitionedParameterCoordinator:
         if not self.is_complete_trace():  # not self.trace_complete:
             # Make sure that recorded parameter and submodule orders are
             # identical across ranks
-            assert_ints_same_as_other_ranks([m.id for m in self.__submodule_order])
-            assert_ints_same_as_other_ranks([p.param.ds_id for p in self.__param_order])
-            assert_ints_same_as_other_ranks(
-                [p.step_id_last_used_at for p in self.__param_order])
+            # assert_ints_same_as_other_ranks([m.id for m in self.__submodule_order])
+            # assert_ints_same_as_other_ranks([p.param.ds_id for p in self.__param_order])
+            # assert_ints_same_as_other_ranks(
+            #     [p.step_id_last_used_at for p in self.__param_order])
 
             if self.is_record_trace():
                 # Successfully recorded a trace
